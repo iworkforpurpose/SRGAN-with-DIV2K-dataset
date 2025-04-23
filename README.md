@@ -38,13 +38,13 @@ pip install -r requirements.txt
 3. Prepare the DIV2K Dataset
 Download the DIV2K dataset from the official DIV2K Dataset page. Organize the dataset as follows:
 
-      data/
-      ├── DIV2K_train/
-      │   ├── HR/   # High-resolution training images
-      │   └── LR/   # Corresponding low-resolution images
-      ├── DIV2K_valid/
-          ├── HR/   # High-resolution validation images
-          └── LR/   # Corresponding low-resolution images
+          data/
+          ├── DIV2K_train/
+          │   ├── HR/   # High-resolution training images
+          │   └── LR/   # Corresponding low-resolution images
+          ├── DIV2K_valid/
+              ├── HR/   # High-resolution validation images
+              └── LR/   # Corresponding low-resolution images
 🚀 Training the Model
 To train the SRGAN model, run:
 
