@@ -1,4 +1,14 @@
-# Ignore large dataset directories
-data/
+# Ignore virtual env
+venv/
+
+# Ignore large folders
 checkpoints/
 samples/
+data/
+
+# Ignore cache and system files
+__pycache__/
+*.py[cod]
+*.log
+.DS_Store
+.ipynb_checkpoints/
