@@ -36,6 +36,7 @@ def normalize_vgg(img):
 def train(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    # Updated data loader with proper image resizing
     train_loader, val_loader = get_dataloaders(
         args.train_lr, args.train_hr,
         args.val_lr, args.val_hr,
@@ -63,6 +64,10 @@ def train(args):
         for lr, hr in loop:
             lr, hr = lr.to(device), hr.to(device)
             batch_size = lr.size(0)
+
+            # Ensure HR and LR images have the same size
+            if lr.size(2) != hr.size(2) or lr.size(3) != hr.size(3):
+                hr = nn.functional.interpolate(hr, size=(lr.size(2), lr.size(3)), mode='bilinear', align_corners=False)
 
             valid = torch.ones((batch_size, 1), device=device)
             fake = torch.zeros((batch_size, 1), device=device)
@@ -104,6 +109,11 @@ def train(args):
         with torch.no_grad():
             for lr, hr in val_loader:
                 lr, hr = lr.to(device), hr.to(device)
+
+                # Ensure validation images are the same size
+                if lr.size(2) != hr.size(2) or lr.size(3) != hr.size(3):
+                    hr = nn.functional.interpolate(hr, size=(lr.size(2), lr.size(3)), mode='bilinear', align_corners=False)
+
                 sr = netG(lr)
                 p, s = compute_metrics(sr, hr)
                 val_psnr += p
