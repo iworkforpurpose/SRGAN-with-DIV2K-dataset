@@ -43,7 +43,7 @@ def get_dataloaders(
     valid_hr_dir: str,
     hr_crop_size: int = 96,
     batch_size: int = 16,
-    num_workers: int = 4,
+    num_workers: int = 2,
     pin_memory: bool = True
 ):
     """
