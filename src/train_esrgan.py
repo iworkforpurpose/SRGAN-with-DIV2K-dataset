@@ -34,7 +34,7 @@ def normalize_vgg(img):
 
 
 def train(args):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device(args.device)
 
     # Updated data loader with proper image resizing
     train_loader, val_loader = get_dataloaders(
@@ -153,8 +153,10 @@ if __name__ == '__main__':
     parser.add_argument('--num-workers',  type=int, default=4)
     parser.add_argument('--checkpoint-dir', type=str, default='checkpoints_esrgan')
     parser.add_argument('--sample-dir',   type=str, default='samples_esrgan')
+    parser.add_argument('--device',       type=str, default='cuda' if torch.cuda.is_available() else 'cpu',
+                        help="Choose 'cuda' or 'cpu'")
+    
     args = parser.parse_args()
-
     os.makedirs(args.checkpoint_dir, exist_ok=True)
     os.makedirs(args.sample_dir, exist_ok=True)
     train(args)
