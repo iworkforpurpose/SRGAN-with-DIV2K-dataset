@@ -4,6 +4,7 @@ from tqdm import tqdm
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision.utils as vutils
 from torchvision import transforms
 from skimage.metrics import peak_signal_noise_ratio as psnr, structural_similarity as ssim
@@ -12,31 +13,37 @@ from esrgan_model import GeneratorRRDB, Discriminator, VGGFeatureExtractor
 from data_loader import get_dataloaders
 
 
-def compute_metrics(sr, hr):
+def compute_metrics(sr: torch.Tensor, hr: torch.Tensor):
+    """
+    Compute PSNR and SSIM between super-resolved (sr) and high-resolution (hr) batches.
+    Ensures tensors match in spatial dimensions by interpolation.
+    """
+    # Make sure sr and hr have the same spatial size
+    if sr.shape[-2:] != hr.shape[-2:]:
+        hr = F.interpolate(hr, size=sr.shape[-2:], mode='bilinear', align_corners=False)
+
+    # Convert to NumPy (NHWC)
     sr_np = sr.permute(0, 2, 3, 1).cpu().numpy()
     hr_np = hr.permute(0, 2, 3, 1).cpu().numpy()
+
     psnr_vals, ssim_vals = [], []
-
     for i in range(sr_np.shape[0]):
-        h, w = sr_np[i].shape[:2]
-        hr_crop = hr_np[i][(hr_np[i].shape[0] - h)//2:(hr_np[i].shape[0] + h)//2,
-                           (hr_np[i].shape[1] - w)//2:(hr_np[i].shape[1] + w)//2]
-        psnr_vals.append(psnr(hr_crop, sr_np[i], data_range=1.0))
-        ssim_vals.append(ssim(hr_crop, sr_np[i], data_range=1.0, channel_axis=-1))
-    return sum(psnr_vals)/len(psnr_vals), sum(ssim_vals)/len(ssim_vals)
+        psnr_vals.append(psnr(hr_np[i], sr_np[i], data_range=1.0))
+        ssim_vals.append(ssim(hr_np[i], sr_np[i], data_range=1.0, channel_axis=-1))
+    return sum(psnr_vals) / len(psnr_vals), sum(ssim_vals) / len(ssim_vals)
 
 
-def normalize_vgg(img):
-    """Normalize input for VGG"""
+def normalize_vgg(img: torch.Tensor):
+    """Normalize input image batch for VGG feature extraction"""
     mean = torch.tensor([0.485, 0.456, 0.406], device=img.device).view(1, 3, 1, 1)
-    std  = torch.tensor([0.229, 0.224, 0.225], device=img.device).view(1, 3, 1, 1)
+    std = torch.tensor([0.229, 0.224, 0.225], device=img.device).view(1, 3, 1, 1)
     return (img - mean) / std
 
 
 def train(args):
     device = torch.device(args.device)
 
-    # Updated data loader with proper image resizing
+    # Data loaders
     train_loader, val_loader = get_dataloaders(
         args.train_lr, args.train_hr,
         args.val_lr, args.val_hr,
@@ -45,13 +52,15 @@ def train(args):
         num_workers=args.num_workers
     )
 
+    # Model setup
     netG = GeneratorRRDB().to(device)
     netD = Discriminator().to(device)
     vgg = VGGFeatureExtractor(device=device).to(device)
-    for p in vgg.parameters(): p.requires_grad = False
+    for p in vgg.parameters():
+        p.requires_grad = False
 
     adversarial_criterion = nn.BCEWithLogitsLoss().to(device)
-    content_criterion     = nn.MSELoss().to(device)
+    content_criterion = nn.MSELoss().to(device)
 
     optimizerG = torch.optim.Adam(netG.parameters(), lr=args.lr, betas=(0.9, 0.999))
     optimizerD = torch.optim.Adam(netD.parameters(), lr=args.lr, betas=(0.9, 0.999))
@@ -65,16 +74,17 @@ def train(args):
             lr, hr = lr.to(device), hr.to(device)
             batch_size = lr.size(0)
 
-            # Ensure HR and LR images have the same size
-            if lr.size(2) != hr.size(2) or lr.size(3) != hr.size(3):
-                hr = nn.functional.interpolate(hr, size=(lr.size(2), lr.size(3)), mode='bilinear', align_corners=False)
+            # Sync HR/LR sizes if needed
+            if lr.shape[-2:] != hr.shape[-2:]:
+                hr = F.interpolate(hr, size=lr.shape[-2:], mode='bilinear', align_corners=False)
 
             valid = torch.ones((batch_size, 1), device=device)
             fake = torch.zeros((batch_size, 1), device=device)
 
-            # Discriminator
+            # -------------------- Discriminator --------------------
             optimizerD.zero_grad()
-            sr = netG(lr).detach()
+            with torch.no_grad():
+                sr = netG(lr)
             pred_real = netD(hr)
             pred_fake = netD(sr)
             d_loss = (
@@ -84,7 +94,7 @@ def train(args):
             d_loss.backward()
             optimizerD.step()
 
-            # Generator
+            # -------------------- Generator --------------------
             optimizerG.zero_grad()
             sr = netG(lr)
             pred_real = netD(hr).detach()
@@ -94,7 +104,7 @@ def train(args):
             feat_sr = vgg(normalize_vgg(sr))
             feat_hr = vgg(normalize_vgg(hr))
             if feat_sr.shape != feat_hr.shape:
-                feat_sr = nn.functional.interpolate(feat_sr, size=feat_hr.shape[-2:], mode='bilinear', align_corners=False)
+                feat_sr = F.interpolate(feat_sr, size=feat_hr.shape[-2:], mode='bilinear', align_corners=False)
 
             content_loss = content_criterion(feat_sr, feat_hr)
             g_loss = content_loss + args.adv_weight * g_adv
@@ -103,36 +113,31 @@ def train(args):
 
             loop.set_postfix(D_loss=d_loss.item(), G_loss=g_loss.item())
 
-        # Validation
+        # -------------------- Validation --------------------
         netG.eval()
         val_psnr, val_ssim = 0.0, 0.0
         with torch.no_grad():
             for lr, hr in val_loader:
                 lr, hr = lr.to(device), hr.to(device)
-
-                # Ensure validation images are the same size
-                if lr.size(2) != hr.size(2) or lr.size(3) != hr.size(3):
-                    hr = nn.functional.interpolate(hr, size=(lr.size(2), lr.size(3)), mode='bilinear', align_corners=False)
-
                 sr = netG(lr)
                 p, s = compute_metrics(sr, hr)
-                val_psnr += p
-                val_ssim += s
+                val_psnr += p; val_ssim += s
+
         val_psnr /= len(val_loader)
         val_ssim /= len(val_loader)
         print(f"Validation → PSNR: {val_psnr:.4f} dB | SSIM: {val_ssim:.4f}")
 
+        # Save best model
         if val_psnr > best_psnr:
             best_psnr = val_psnr
             torch.save(netG.state_dict(), os.path.join(args.checkpoint_dir, 'generator_best.pth'))
             print("✅ Saved best ESRGAN generator.")
 
-        # Save a sample grid
+        # Save sample images
         sample_lr, sample_hr = next(iter(val_loader))
         sample_sr = netG(sample_lr.to(device))
         grid = vutils.make_grid(
-            torch.cat([sample_lr, sample_sr.cpu(), sample_hr], dim=0),
-            nrow=3
+            torch.cat([sample_lr, sample_sr.cpu(), sample_hr], dim=0), nrow=3
         )
         vutils.save_image(grid, os.path.join(args.sample_dir, f'epoch_{epoch}.png'), normalize=True)
 
@@ -155,7 +160,7 @@ if __name__ == '__main__':
     parser.add_argument('--sample-dir',   type=str, default='samples_esrgan')
     parser.add_argument('--device',       type=str, default='cuda' if torch.cuda.is_available() else 'cpu',
                         help="Choose 'cuda' or 'cpu'")
-    
+
     args = parser.parse_args()
     os.makedirs(args.checkpoint_dir, exist_ok=True)
     os.makedirs(args.sample_dir, exist_ok=True)
