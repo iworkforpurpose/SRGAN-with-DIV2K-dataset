@@ -18,11 +18,9 @@ def compute_metrics(sr: torch.Tensor, hr: torch.Tensor):
     Compute PSNR and SSIM between super-resolved (sr) and high-resolution (hr) batches.
     Ensures tensors match in spatial dimensions by interpolation.
     """
-    # Make sure sr and hr have the same spatial size
     if sr.shape[-2:] != hr.shape[-2:]:
         hr = F.interpolate(hr, size=sr.shape[-2:], mode='bilinear', align_corners=False)
 
-    # Convert to NumPy (NHWC)
     sr_np = sr.permute(0, 2, 3, 1).cpu().numpy()
     hr_np = hr.permute(0, 2, 3, 1).cpu().numpy()
 
@@ -78,7 +76,6 @@ def train(args):
             lr, hr = lr.to(device), hr.to(device)
             b = lr.size(0)
 
-            # Sync HR & LR sizes
             if lr.shape[-2:] != hr.shape[-2:]:
                 hr = F.interpolate(hr, size=lr.shape[-2:], mode='bilinear', align_corners=False)
 
@@ -123,16 +120,17 @@ def train(args):
         val_psnr /= len(val_loader); val_ssim /= len(val_loader)
         print(f"Validation → PSNR: {val_psnr:.4f} dB | SSIM: {val_ssim:.4f}")
 
-        # Save best checkpoint
         if val_psnr > best_psnr:
             best_psnr = val_psnr
             torch.save(netG.state_dict(), os.path.join(args.checkpoint_dir, 'generator_best.pth'))
             print("✅ Saved best ESRGAN generator.")
 
-        # Sample images
+        # Sample images: upsample LR to match HR for grid
         lr_samp, hr_samp = next(iter(val_loader))
+        lr_up = F.interpolate(lr_samp, size=hr_samp.shape[-2:], mode='bilinear', align_corners=False)
         sr_samp = netG(lr_samp.to(device))
-        grid = vutils.make_grid(torch.cat([lr_samp, sr_samp.cpu(), hr_samp], dim=0), nrow=3)
+        sr_samp = F.interpolate(sr_samp.cpu(), size=hr_samp.shape[-2:], mode='bilinear', align_corners=False)
+        grid = vutils.make_grid(torch.cat([lr_up, sr_samp, hr_samp], dim=0), nrow=3)
         vutils.save_image(grid, os.path.join(args.sample_dir, f'epoch_{epoch}.png'), normalize=True)
 
     print("✅ Training complete.")
