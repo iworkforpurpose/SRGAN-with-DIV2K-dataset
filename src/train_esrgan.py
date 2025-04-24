@@ -41,7 +41,12 @@ def normalize_vgg(img: torch.Tensor):
 
 
 def train(args):
-    device = torch.device(args.device)
+    # Determine device and fallback if necessary
+    if args.device == 'cuda' and not torch.cuda.is_available():
+        print("[WARN] CUDA requested but not available; using CPU instead.")
+        device = torch.device('cpu')
+    else:
+        device = torch.device(args.device)
 
     # Data loaders
     train_loader, val_loader = get_dataloaders(
@@ -56,10 +61,9 @@ def train(args):
     netG = GeneratorRRDB().to(device)
     netD = Discriminator().to(device)
     vgg = VGGFeatureExtractor(device=device).to(device)
-    for p in vgg.parameters():
-        p.requires_grad = False
+    for p in vgg.parameters(): p.requires_grad = False
 
-    adversarial_criterion = nn.BCEWithLogitsLoss().to(device)
+    adv_criterion = nn.BCEWithLogitsLoss().to(device)
     content_criterion = nn.MSELoss().to(device)
 
     optimizerG = torch.optim.Adam(netG.parameters(), lr=args.lr, betas=(0.9, 0.999))
@@ -72,48 +76,42 @@ def train(args):
 
         for lr, hr in loop:
             lr, hr = lr.to(device), hr.to(device)
-            batch_size = lr.size(0)
+            b = lr.size(0)
 
-            # Sync HR/LR sizes if needed
+            # Sync HR & LR sizes
             if lr.shape[-2:] != hr.shape[-2:]:
                 hr = F.interpolate(hr, size=lr.shape[-2:], mode='bilinear', align_corners=False)
 
-            valid = torch.ones((batch_size, 1), device=device)
-            fake = torch.zeros((batch_size, 1), device=device)
+            valid = torch.ones((b, 1), device=device)
+            fake = torch.zeros((b, 1), device=device)
 
-            # -------------------- Discriminator --------------------
+            # Discriminator step
             optimizerD.zero_grad()
-            with torch.no_grad():
-                sr = netG(lr)
-            pred_real = netD(hr)
-            pred_fake = netD(sr)
-            d_loss = (
-                adversarial_criterion(pred_real - pred_fake.mean(), valid) +
-                adversarial_criterion(pred_fake - pred_real.mean().detach(), fake)
-            ) * 0.5
-            d_loss.backward()
-            optimizerD.step()
+            with torch.no_grad(): sr = netG(lr)
+            d_real = netD(hr)
+            d_fake = netD(sr)
+            d_loss = (adv_criterion(d_real - d_fake.mean(), valid) + adv_criterion(d_fake - d_real.mean().detach(), fake)) * 0.5
+            d_loss.backward(); optimizerD.step()
 
-            # -------------------- Generator --------------------
+            # Generator step
             optimizerG.zero_grad()
             sr = netG(lr)
-            pred_real = netD(hr).detach()
-            pred_fake = netD(sr)
-            g_adv = adversarial_criterion(pred_fake - pred_real.mean(), valid)
+            d_real = netD(hr).detach()
+            d_fake = netD(sr)
+            g_adv = adv_criterion(d_fake - d_real.mean(), valid)
 
             feat_sr = vgg(normalize_vgg(sr))
             feat_hr = vgg(normalize_vgg(hr))
             if feat_sr.shape != feat_hr.shape:
                 feat_sr = F.interpolate(feat_sr, size=feat_hr.shape[-2:], mode='bilinear', align_corners=False)
 
-            content_loss = content_criterion(feat_sr, feat_hr)
-            g_loss = content_loss + args.adv_weight * g_adv
-            g_loss.backward()
-            optimizerG.step()
+            c_loss = content_criterion(feat_sr, feat_hr)
+            g_loss = c_loss + args.adv_weight * g_adv
+            g_loss.backward(); optimizerG.step()
 
             loop.set_postfix(D_loss=d_loss.item(), G_loss=g_loss.item())
 
-        # -------------------- Validation --------------------
+        # Validation
         netG.eval()
         val_psnr, val_ssim = 0.0, 0.0
         with torch.no_grad():
@@ -122,23 +120,19 @@ def train(args):
                 sr = netG(lr)
                 p, s = compute_metrics(sr, hr)
                 val_psnr += p; val_ssim += s
-
-        val_psnr /= len(val_loader)
-        val_ssim /= len(val_loader)
+        val_psnr /= len(val_loader); val_ssim /= len(val_loader)
         print(f"Validation → PSNR: {val_psnr:.4f} dB | SSIM: {val_ssim:.4f}")
 
-        # Save best model
+        # Save best checkpoint
         if val_psnr > best_psnr:
             best_psnr = val_psnr
             torch.save(netG.state_dict(), os.path.join(args.checkpoint_dir, 'generator_best.pth'))
             print("✅ Saved best ESRGAN generator.")
 
-        # Save sample images
-        sample_lr, sample_hr = next(iter(val_loader))
-        sample_sr = netG(sample_lr.to(device))
-        grid = vutils.make_grid(
-            torch.cat([sample_lr, sample_sr.cpu(), sample_hr], dim=0), nrow=3
-        )
+        # Sample images
+        lr_samp, hr_samp = next(iter(val_loader))
+        sr_samp = netG(lr_samp.to(device))
+        grid = vutils.make_grid(torch.cat([lr_samp, sr_samp.cpu(), hr_samp], dim=0), nrow=3)
         vutils.save_image(grid, os.path.join(args.sample_dir, f'epoch_{epoch}.png'), normalize=True)
 
     print("✅ Training complete.")
@@ -146,20 +140,19 @@ def train(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Train ESRGAN (x2 upscaling) on DIV2K")
-    parser.add_argument('--train-lr',     type=str, required=True, help='Path to LR train folder')
-    parser.add_argument('--train-hr',     type=str, required=True, help='Path to HR train folder')
-    parser.add_argument('--val-lr',       type=str, required=True, help='Path to LR val folder')
-    parser.add_argument('--val-hr',       type=str, required=True, help='Path to HR val folder')
-    parser.add_argument('--epochs',       type=int, default=100)
-    parser.add_argument('--batch-size',   type=int, default=16)
-    parser.add_argument('--lr',           type=float, default=1e-4)
-    parser.add_argument('--adv-weight',   type=float, default=5e-3)
-    parser.add_argument('--hr-crop',      type=int, default=96)
-    parser.add_argument('--num-workers',  type=int, default=4)
+    parser.add_argument('--train-lr', type=str, required=True)
+    parser.add_argument('--train-hr', type=str, required=True)
+    parser.add_argument('--val-lr',   type=str, required=True)
+    parser.add_argument('--val-hr',   type=str, required=True)
+    parser.add_argument('--epochs',   type=int, default=100)
+    parser.add_argument('--batch-size', type=int, default=16)
+    parser.add_argument('--lr',        type=float, default=1e-4)
+    parser.add_argument('--adv-weight', type=float, default=5e-3)
+    parser.add_argument('--hr-crop',   type=int, default=96)
+    parser.add_argument('--num-workers', type=int, default=4)
     parser.add_argument('--checkpoint-dir', type=str, default='checkpoints_esrgan')
-    parser.add_argument('--sample-dir',   type=str, default='samples_esrgan')
-    parser.add_argument('--device',       type=str, default='cuda' if torch.cuda.is_available() else 'cpu',
-                        help="Choose 'cuda' or 'cpu'")
+    parser.add_argument('--sample-dir', type=str, default='samples_esrgan')
+    parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
 
     args = parser.parse_args()
     os.makedirs(args.checkpoint_dir, exist_ok=True)
