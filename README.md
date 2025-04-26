@@ -101,6 +101,45 @@ Output samples will be saved in samples_srgan/ and samples_esrgan/.
     Evaluation of Improved Model | ✅ Done (PSNR and SSIM logging Task 2)
     Code Organization, Documentation, Report | ✅ Full Codebase + Reports ready
 
+📈 Task 1 vs Task 2: SRGAN vs ESRGAN Model Comparison
+This section highlights the improvements between the baseline SRGAN (Task 1) and the enhanced ESRGAN (Task 2) models based on architecture, training setup, and quantitative performance metrics.
+
+🧠 Architectural Differences
+Feature | Task 1: SRGAN | Task 2: ESRGAN
+Generator Architecture | Deep ResNet (Residual Blocks with BN) | Residual-in-Residual Dense Blocks (RRDB)
+Discriminator | Standard CNN-based discriminator | Same as Task 1
+Loss Functions | Pixel Loss + VGG Content Loss + Adversarial Loss | Improved Perceptual Loss + Adversarial Loss
+Batch Normalization | Present in generator | Removed in generator
+
+Parameter | Task 1: SRGAN | Task 2: ESRGAN
+Batch Size | 16 | 4
+HR Patch Size | 96×96 pixels | 48×48 pixels
+Learning Rate | 1e-4 | 2e-4
+Epochs | 50 | 100
+Dataset | DIV2K | DIV2K
+Data Augmentation | Random flips, rotations | Random flips, rotations
+
+📈 Performance Metrics (Validation Set)
+Metric | Task 1: SRGAN (after 50 epochs) | Task 2: ESRGAN (after 100 epochs)
+PSNR (Peak Signal-to-Noise Ratio) | 8.78 dB | 13.5 dB
+SSIM (Structural Similarity Index) | 0.063 | 0.300
+
+📝 Observations
+Visual Quality:
+ESRGAN produces sharper, more detailed textures compared to SRGAN's smooth outputs.
+
+Training Stability:
+Removing BatchNorm layers in ESRGAN helped stabilize training and avoid artifacts.
+
+Metric Improvement:
+ESRGAN achieved significantly higher PSNR and SSIM, indicating better reconstruction quality.
+
+Resource Trade-offs:
+Due to ESRGAN's heavier model, batch size and patch size had to be reduced to fit GPU memory (Tesla T4).
+
+Training Duration:
+Doubling the training epochs (50 → 100) in Task 2 contributed to improved convergence.
+
 📑 References
 Ledig et al., Photo-Realistic Single Image Super-Resolution Using a Generative Adversarial Network, CVPR 2017.
 
