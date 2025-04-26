@@ -1,4 +1,4 @@
-SRGAN and ESRGAN-based Super-Resolution on DIV2K
+#SRGAN and ESRGAN-based Super-Resolution on DIV2K
 Tasks 1 and 2 — AI Project by Vighnesh Nama
 
 📋 Project Description
