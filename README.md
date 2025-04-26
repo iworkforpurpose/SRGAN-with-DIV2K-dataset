@@ -32,25 +32,17 @@ Objective: Faithfully reproduce the SRGAN model (Ledig et al., 2017) on the DIV2
 Training Setup:
 
 Dataset: DIV2K
-
 Epochs: 50
-
 Batch size: 16
-
 Crop size: 96×96
-
 Optimizer: Adam (lr=1e-4)
 
 Results after 50 epochs:
-
 PSNR: 8.78 dB
-
 SSIM: 0.063
 
 Challenges:
-
 Limited training epochs compared to original paper (~100k iterations).
-
 GPU memory constraints.
 
 Task 1 Colab Notebook:
@@ -58,35 +50,23 @@ Task 1 Colab Notebook:
 
 🧪 Task 2: ESRGAN-Style Enhancement
 Objective: Improve SRGAN by:
-
 Replacing generator with ESRGAN's RRDB (Residual-in-Residual Dense Block).
-
 Adding per-epoch PSNR and SSIM evaluation.
-
 Optimizing batch size and crop size for GPU constraints.
 
 Training Setup:
-
 Dataset: DIV2K
-
 Epochs: 100
-
 Batch size: 8 (adjusted)
-
 Crop size: 64×64 (adjusted)
-
 Optimizer: Adam (lr=1e-4)
 
 Best Results:
-
 Peak PSNR: 13.5 dB
-
 Peak SSIM: 0.30
 
 Challenges:
-
 Training ESRGAN-style deeper networks on limited resources.
-
 Managing perceptual loss vs PSNR trade-offs.
 
 Task 2 Colab Notebook:
