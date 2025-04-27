@@ -131,8 +131,15 @@ def train(args):
         # Checkpoint & sample save
         if val_psnr > best_psnr:
             best_psnr = val_psnr
-            torch.save(netG.state_dict(), os.path.join(args.checkpoint_dir, 'generator_best.pth'))
-            print("🚀 Saved best generator checkpoint.")
+            # Save model and optimizer together
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': netG.state_dict(),
+                'optimizer_state_dict': optimizerG.state_dict(),
+                'psnr': best_psnr
+            }, os.path.join(args.checkpoint_dir, 'generator_best.pth'))
+            print("🚀 Saved best generator checkpoint (model + optimizer).")
+
         # Save sample grid
         sample_lr, sample_hr = next(iter(val_loader))
         sample_sr = netG(sample_lr.to(device))
