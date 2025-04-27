@@ -43,7 +43,7 @@ def get_dataloaders(
     valid_hr_dir: str,
     hr_crop_size: int = 96,
     batch_size: int = 16,
-    num_workers: int = 4,
+    num_workers: int = 2,
     pin_memory: bool = True
 ):
     """
@@ -60,7 +60,7 @@ def get_dataloaders(
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
-        pin_memory=pin_memory
+        pin_memory=False
     )
 
     valid_loader = DataLoader(
@@ -68,7 +68,7 @@ def get_dataloaders(
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=pin_memory
+        pin_memory=False
     )
 
     return train_loader, valid_loader
