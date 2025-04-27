@@ -70,7 +70,7 @@ Training ESRGAN-style deeper networks on limited resources.
 Managing perceptual loss vs PSNR trade-offs.
 
 Task 2 Colab Notebook:
-👉 
+👉 https://colab.research.google.com/drive/1sgyjXVBZOwbeGks2tJeetjy2lHwCBBbE?usp=sharing
 
 ⚙️ How to Run Locally
 
